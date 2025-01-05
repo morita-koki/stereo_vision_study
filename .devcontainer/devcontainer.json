@@ -1,0 +1,59 @@
+{
+	"name": "stereo_vision",
+	"dockerComposeFile": [
+		"docker-compose.yaml"
+	],
+	"service": "stereo_vision_dev",
+	"workspaceFolder": "/home/${localEnv:USERNAME}/stereo_vision",
+	// Below this line is optional (You can comment them out)
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"settings": {
+					"files.insertFinalNewline": true,
+					"[cpp]": {
+						"editor.wordBasedSuggestions": true,
+						"editor.suggest.insertMode": "replace",
+						"editor.semanticHighlighting.enabled": true,
+						"editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+					},
+					"[python]": {
+						"editor.defaultFormatter": "ms-python.black-formatter",
+						"editor.formatOnSave": true
+					},
+					"C_Cpp.intelliSenseEngine": "disabled",
+					"gitlens.views.repositories.showWorktrees": false,
+					"[dockerfile]": {
+						"editor.defaultFormatter": "ms-azuretools.vscode-docker"
+					}
+				}
+			},
+			"extensions": [
+				// General
+				"eamodio.gitlens",
+				"mhutchie.git-graph",
+				"foxundermoon.shell-format",
+				"DavidAnson.vscode-markdownlint",
+				"ms-azuretools.vscode-docker",
+				"GitHub.vscode-pull-request-github",
+				"redhat.vscode-yaml",
+				"yzhang.markdown-all-in-one",
+				"IBM.output-colorizer",
+				"GitHub.copilot",
+				"Codeium.codeium",
+				// C++
+				"cschlosser.doxdocgen",
+				"jeff-hykin.better-cpp-syntax",
+				"ms-vscode.cpptools-extension-pack",
+				"llvm-vs-code-extensions.vscode-clangd",
+				"bbenoist.Doxygen",
+				// Python
+				"ms-python.python",
+				"ms-toolsai.jupyter",
+				"ms-python.vscode-pylance",
+				"KevinRose.vsc-python-indent",
+				"ms-python.black-formatter"
+			]
+		}
+	}
+}

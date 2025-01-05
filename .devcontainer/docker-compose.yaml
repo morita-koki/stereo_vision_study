@@ -1,0 +1,38 @@
+version: "3"
+services:
+  stereo_vision_dev:
+    container_name: stereo_vision_dev
+    hostname: stereo_vision_dev
+    restart: always
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: base
+      args:
+        - UNAME=${UNAME}
+        - PASS=${PASS}
+        - USER_UID=${USER_UID}
+        - USER_GID=${USER_GID}
+    environment:
+      - TZ=${TZ}
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - NVIDIA_DISABLE_REQUIRE=true
+    volumes:
+      # Current directory
+      - ../:/home/${UNAME}/stereo_vision
+      # SSH directory
+      - ~/.ssh:/home/${UNAME}/.ssh
+      # Git config
+      - ~/.gitconfig:/home/${UNAME}/.gitconfig
+      # Data (Optional)
+      - /media/${UNAME}:/home/${UNAME}/data
+      # GUI (Optional)
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [ compute, utility, video, graphics ]
+    tty: true
