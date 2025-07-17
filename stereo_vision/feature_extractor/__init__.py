@@ -56,6 +56,13 @@ from .traditional import (
     BRIEFExtractor
 )
 
+from .learned import (
+    LearnedFeatureExtractor,
+    DummyLearnedExtractor
+)
+
+from .superpoint import SuperPointExtractor
+
 from .factory import FeatureExtractorFactory
 
 from .config import (
@@ -96,6 +103,11 @@ __all__ = [
     'ORBExtractor',
     'SURFExtractor',
     'BRIEFExtractor',
+    
+    # Learned extractors
+    'LearnedFeatureExtractor',
+    'DummyLearnedExtractor',
+    'SuperPointExtractor',
     
     # Factory
     'FeatureExtractorFactory',

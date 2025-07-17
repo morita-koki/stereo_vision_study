@@ -3,6 +3,10 @@ import warnings
 
 from .base import BaseFeatureExtractor
 from .traditional import SIFTExtractor, ORBExtractor, SURFExtractor, BRIEFExtractor
+from .learned import DummyLearnedExtractor
+from .superpoint import SuperPointExtractor
+from .disk import DISKExtractor
+from .alike import ALikeExtractor
 
 
 class FeatureExtractorFactory:
@@ -14,6 +18,13 @@ class FeatureExtractorFactory:
         'orb': ORBExtractor,
         'surf': SURFExtractor,
         'brief': BRIEFExtractor,
+        'dummy_learned': DummyLearnedExtractor,
+        'superpoint': SuperPointExtractor,
+        'disk': DISKExtractor,
+        'alike-t': ALikeExtractor,
+        'alike-s': ALikeExtractor,
+        'alike-n': ALikeExtractor,
+        'alike-l': ALikeExtractor,
     }
     
     # 各抽出器のデフォルト設定
@@ -45,6 +56,50 @@ class FeatureExtractorFactory:
         'brief': {
             'descriptor_size': 32,
             'use_orientation': False
+        },
+        'dummy_learned': {
+            'n_features': 100,
+            'device': 'cpu'
+        },
+        'superpoint': {
+            'nms_radius': 4,
+            'keypoint_threshold': 0.005,
+            'max_keypoints': -1,
+            'remove_borders': 4
+        },
+        'disk': {
+            'desc_dim': 128,
+            'max_keypoints': 2048,
+            'keypoint_threshold': 0.0,
+            'nms_radius': 2
+        },
+        'alike-t': {
+            'model_type': 'alike-t',
+            'desc_dim': 64,
+            'max_keypoints': 1000,
+            'keypoint_threshold': 0.5,
+            'nms_radius': 2
+        },
+        'alike-s': {
+            'model_type': 'alike-s',
+            'desc_dim': 128,
+            'max_keypoints': 1000,
+            'keypoint_threshold': 0.5,
+            'nms_radius': 2
+        },
+        'alike-n': {
+            'model_type': 'alike-n',
+            'desc_dim': 128,
+            'max_keypoints': 1000,
+            'keypoint_threshold': 0.5,
+            'nms_radius': 2
+        },
+        'alike-l': {
+            'model_type': 'alike-l',
+            'desc_dim': 256,
+            'max_keypoints': 1000,
+            'keypoint_threshold': 0.5,
+            'nms_radius': 2
         }
     }
     
