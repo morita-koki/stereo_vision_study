@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import cv2
 from typing import Dict, Any, Optional, Union
 from pathlib import Path
 
@@ -105,7 +106,8 @@ class SuperPointExtractor(LearnedFeatureExtractor):
         self.remove_borders = remove_borders
         
         # モデルのダウンロードURL
-        self.model_url = "https://github.com/rpautrat/SuperPoint/raw/master/superpoint_v1.pth"
+        # Official SuperPoint model URL from Magic Leap
+        self.model_url = "https://github.com/magicleap/SuperPointPretrainedNetwork/raw/master/superpoint_v1.pth"
         
         # 設定を更新
         self.default_config.update({
@@ -124,8 +126,25 @@ class SuperPointExtractor(LearnedFeatureExtractor):
         if model_path is None:
             print("Downloading SuperPoint model...")
             model_path = download_model('superpoint_v1', self.model_url)
+            
             if model_path is None:
-                raise RuntimeError("Failed to download SuperPoint model")
+                # Try alternative URLs
+                alternative_urls = [
+                    "https://raw.githubusercontent.com/magicleap/SuperPointPretrainedNetwork/master/superpoint_v1.pth",
+                    "https://github.com/eric-yyjau/pytorch-superpoint/raw/master/pretrained/superpoint_v1.pth"
+                ]
+                
+                for alt_url in alternative_urls:
+                    print(f"Trying alternative URL: {alt_url}")
+                    model_path = download_model('superpoint_v1', alt_url)
+                    if model_path is not None:
+                        break
+                
+                if model_path is None:
+                    print("SuperPoint model download failed. Please check your internet connection.")
+                    print("Alternative: Use traditional extractors like 'sift' or 'orb' which work without downloading models.")
+                    raise RuntimeError("Failed to download SuperPoint model from all sources")
+            
             self.model_path = model_path
         
         # モデルファイルが存在しない場合
@@ -139,8 +158,24 @@ class SuperPointExtractor(LearnedFeatureExtractor):
                 # ダウンロード
                 print("Downloading SuperPoint model...")
                 model_path = download_model('superpoint_v1', self.model_url)
+                
                 if model_path is None:
-                    raise RuntimeError("Failed to download SuperPoint model")
+                    print("Primary URL failed, trying alternatives...")
+                    alternative_urls = [
+                        "https://raw.githubusercontent.com/magicleap/SuperPointPretrainedNetwork/master/superpoint_v1.pth",
+                        "https://github.com/eric-yyjau/pytorch-superpoint/raw/master/pretrained/superpoint_v1.pth"
+                    ]
+                    
+                    for alt_url in alternative_urls:
+                        print(f"Trying: {alt_url}")
+                        model_path = download_model('superpoint_v1', alt_url)
+                        if model_path is not None:
+                            break
+                    
+                    if model_path is None:
+                        print("All download attempts failed. Please use traditional extractors like 'sift' or 'orb'.")
+                        raise RuntimeError("Failed to download SuperPoint model from all sources")
+                
                 self.model_path = model_path
         
         # モデルの作成とロード
@@ -183,13 +218,21 @@ class SuperPointExtractor(LearnedFeatureExtractor):
             )
             
             # KeyPointオブジェクトを再構築
-            keypoints = []
+            filtered_kps = []
             for i, ((x, y), score) in enumerate(zip(filtered_keypoints, filtered_scores)):
-                kp = keypoints[i]  # 元のキーポイント
-                kp.x = x
-                kp.y = y
-                kp.response = score
-                keypoints.append(kp)
+                # 新しいKeyPointオブジェクトを作成
+                from .base import KeyPoint
+                kp = KeyPoint(
+                    x=float(x),
+                    y=float(y),
+                    response=float(score),
+                    angle=-1.0,  # SuperPointは方向情報なし
+                    scale=1.0,   # デフォルトスケール
+                    octave=0,
+                    class_id=0
+                )
+                filtered_kps.append(kp)
+            keypoints = filtered_kps
             
             # 記述子も対応する分だけ抽出
             if len(descriptors) > 0:
@@ -203,6 +246,10 @@ class SuperPointExtractor(LearnedFeatureExtractor):
             keypoints = [keypoints[i] for i in sorted_indices[:self.max_keypoints]]
             if len(descriptors) > 0:
                 descriptors = descriptors[sorted_indices[:self.max_keypoints]]
+        
+        print(f"SuperPoint: Final FeatureSet with {len(keypoints)} keypoints")
+        if len(keypoints) > 0:
+            print(f"SuperPoint: First few keypoints: {[(kp.x, kp.y, kp.response) for kp in keypoints[:3]]}")
         
         return FeatureSet(
             keypoints=keypoints,
@@ -251,12 +298,40 @@ class SuperPointExtractor(LearnedFeatureExtractor):
         ys, xs = np.where(valid_mask)
         scores_np = heatmap_np[ys, xs]
         
-        # KeyPointオブジェクトに変換
-        keypoints = tensor_to_keypoints(
-            torch.from_numpy(np.stack([xs, ys], axis=1).astype(np.float32)),
-            torch.from_numpy(scores_np.astype(np.float32))
-        )
+        # デバッグ情報を追加
+        print(f"SuperPoint: Found {len(xs)} candidate keypoints above threshold {self.keypoint_threshold}")
         
+        if len(scores_np) > 0:
+            print(f"SuperPoint: Score range: {scores_np.min():.4f} - {scores_np.max():.4f}")
+        else:
+            print(f"SuperPoint: No keypoints found! Max score in heatmap: {heatmap_np.max():.4f}")
+            
+            # 閾値を下げて再試行
+            if heatmap_np.max() > 0:
+                adaptive_threshold = heatmap_np.max() * 0.1  # 最大値の10%
+                print(f"SuperPoint: Trying adaptive threshold: {adaptive_threshold:.4f}")
+                valid_mask = heatmap_np > adaptive_threshold
+                
+                if self.remove_borders > 0:
+                    valid_mask[:self.remove_borders, :] = False
+                    valid_mask[-self.remove_borders:, :] = False
+                    valid_mask[:, :self.remove_borders] = False
+                    valid_mask[:, -self.remove_borders:] = False
+                
+                ys, xs = np.where(valid_mask)
+                scores_np = heatmap_np[ys, xs]
+                print(f"SuperPoint: With adaptive threshold, found {len(xs)} keypoints")
+        
+        # KeyPointオブジェクトに変換
+        if len(xs) > 0:
+            keypoints = tensor_to_keypoints(
+                torch.from_numpy(np.stack([xs, ys], axis=1).astype(np.float32)),
+                torch.from_numpy(scores_np.astype(np.float32))
+            )
+        else:
+            keypoints = []
+        
+        print(f"SuperPoint: Created {len(keypoints)} KeyPoint objects")
         return keypoints, scores_np
     
     def _extract_descriptors(self, desc: torch.Tensor, keypoints: list, image_shape: tuple) -> np.ndarray:
@@ -319,17 +394,52 @@ class SuperPointExtractor(LearnedFeatureExtractor):
         if self.model is None:
             raise RuntimeError("Model is not loaded")
         
+        print(f"SuperPoint: Processing image of size {image.shape}")
+        
+        # 大きい画像の場合はリサイズ
+        original_shape = image.shape[:2]
+        max_dimension = 1024  # 最大サイズを制限
+        
+        if max(original_shape) > max_dimension:
+            scale_factor = max_dimension / max(original_shape)
+            new_height = int(original_shape[0] * scale_factor)
+            new_width = int(original_shape[1] * scale_factor)
+            
+            print(f"SuperPoint: Resizing image from {original_shape} to ({new_height}, {new_width})")
+            resized_image = cv2.resize(image, (new_width, new_height))
+        else:
+            resized_image = image
+            scale_factor = 1.0
+        
+        print(f"SuperPoint: Starting preprocessing...")
         # 前処理
-        input_tensor = self._preprocess_image(image)
+        input_tensor = self._preprocess_image(resized_image)
         input_tensor = input_tensor.to(self.device)
+        
+        print(f"SuperPoint: Input tensor shape: {input_tensor.shape}")
+        print(f"SuperPoint: Starting inference...")
         
         # 推論
         self.model.eval()
         with torch.no_grad():
             semi, desc = self.model(input_tensor)
         
+        print(f"SuperPoint: Inference completed. Output shapes: semi={semi.shape}, desc={desc.shape}")
+        
         # 後処理
-        return self._postprocess_output((semi, desc), image.shape[:2])
+        feature_set = self._postprocess_output((semi, desc), resized_image.shape[:2])
+        
+        # 座標を元の画像サイズにスケールバック
+        if scale_factor != 1.0:
+            print(f"SuperPoint: Scaling coordinates back by factor {1/scale_factor}")
+            for kp in feature_set.keypoints:
+                kp.x = kp.x / scale_factor
+                kp.y = kp.y / scale_factor
+            
+            # 元の画像サイズに更新
+            feature_set.image_shape = original_shape
+        
+        return feature_set
     
     def get_config(self) -> Dict[str, Any]:
         """現在の設定を取得"""

@@ -47,7 +47,7 @@ def load_image(image_path: Union[str, Path],
 
 def draw_keypoints(image: np.ndarray, 
                    feature_set: FeatureSet,
-                   color: Tuple[int, int, int] = (0, 255, 0),
+                   color: Tuple[int, int, int] = (0, 0, 255),
                    draw_rich_keypoints: bool = False) -> np.ndarray:
     """
     特徴点を画像に描画
@@ -93,7 +93,7 @@ def draw_keypoints(image: np.ndarray,
 def save_keypoints_image(image: np.ndarray,
                         feature_set: FeatureSet,
                         output_path: Union[str, Path],
-                        color: Tuple[int, int, int] = (0, 255, 0),
+                        color: Tuple[int, int, int] = (0, 0, 255),
                         draw_rich_keypoints: bool = False):
     """
     特徴点が描画された画像を保存
@@ -107,6 +107,190 @@ def save_keypoints_image(image: np.ndarray,
     """
     output_image = draw_keypoints(image, feature_set, color, draw_rich_keypoints)
     cv2.imwrite(str(output_path), output_image)
+
+
+def draw_keypoints_advanced(image: np.ndarray,
+                           feature_set: FeatureSet,
+                           show_response: bool = False,
+                           show_indices: bool = False,
+                           color_by_response: bool = False,
+                           max_keypoints_display: int = None,
+                           point_size: int = 3) -> np.ndarray:
+    """
+    高度な特徴点描画（応答値表示、色分け、インデックス表示など）
+    
+    Args:
+        image: 入力画像
+        feature_set: 特徴点セット
+        show_response: 応答値を表示するかどうか
+        show_indices: インデックスを表示するかどうか
+        color_by_response: 応答値に基づいて色分けするかどうか
+        max_keypoints_display: 表示する最大特徴点数
+        point_size: 点のサイズ
+        
+    Returns:
+        np.ndarray: 描画された画像
+    """
+    # 画像をカラーに変換
+    if len(image.shape) == 2:
+        output_image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    else:
+        output_image = image.copy()
+    
+    keypoints = feature_set.keypoints
+    
+    # 表示する特徴点数を制限
+    if max_keypoints_display and len(keypoints) > max_keypoints_display:
+        # 応答値でソートして上位を選択
+        sorted_kps = sorted(keypoints, key=lambda kp: kp.response, reverse=True)
+        keypoints = sorted_kps[:max_keypoints_display]
+    
+    # 応答値に基づく色分け用の正規化
+    if color_by_response and keypoints:
+        responses = [kp.response for kp in keypoints]
+        min_resp, max_resp = min(responses), max(responses)
+        resp_range = max_resp - min_resp if max_resp != min_resp else 1.0
+    
+    for i, kp in enumerate(keypoints):
+        x, y = int(kp.x), int(kp.y)
+        
+        # 色を決定
+        if color_by_response:
+            # 応答値に基づいてカラーマップ (赤=高, 青=低)
+            normalized_resp = (kp.response - min_resp) / resp_range
+            color = (
+                int(255 * (1 - normalized_resp)),  # Blue
+                int(255 * normalized_resp * 0.5),  # Green  
+                int(255 * normalized_resp)         # Red
+            )
+        else:
+            color = (0, 0, 255)  # デフォルト赤
+        
+        # 特徴点を描画
+        cv2.circle(output_image, (x, y), point_size, color, -1)
+        
+        # スケールを表示（円）
+        if kp.scale > 0:
+            radius = int(kp.scale * 2)
+            cv2.circle(output_image, (x, y), radius, color, 1)
+        
+        # 方向を表示（線）
+        if kp.angle >= 0:
+            angle_rad = np.radians(kp.angle)
+            length = kp.scale * 3 if kp.scale > 0 else 10
+            end_x = int(x + length * np.cos(angle_rad))
+            end_y = int(y + length * np.sin(angle_rad))
+            cv2.line(output_image, (x, y), (end_x, end_y), color, 1)
+        
+        # 応答値を表示
+        if show_response:
+            text = f"{kp.response:.3f}"
+            cv2.putText(output_image, text, (x + 5, y - 5), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.3, color, 1)
+        
+        # インデックスを表示
+        if show_indices:
+            text = str(i)
+            cv2.putText(output_image, text, (x - 5, y + 15), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+    
+    return output_image
+
+
+def draw_keypoints_grid(images: list,
+                       feature_sets: list,
+                       titles: list = None,
+                       cols: int = 2,
+                       show_count: bool = True) -> np.ndarray:
+    """
+    複数の画像と特徴点をグリッド表示
+    
+    Args:
+        images: 画像のリスト
+        feature_sets: 特徴点セットのリスト
+        titles: タイトルのリスト
+        cols: 列数
+        show_count: 特徴点数を表示するかどうか
+        
+    Returns:
+        np.ndarray: グリッド画像
+    """
+    n_images = len(images)
+    rows = (n_images + cols - 1) // cols
+    
+    # 各画像に特徴点を描画
+    drawn_images = []
+    for i, (img, fs) in enumerate(zip(images, feature_sets)):
+        drawn_img = draw_keypoints(img, fs, (0, 0, 255), False)
+        
+        # タイトルと特徴点数を追加
+        if titles and i < len(titles):
+            title = titles[i]
+        else:
+            title = f"Image {i+1}"
+        
+        if show_count:
+            title += f" ({len(fs.keypoints)} points)"
+        
+        # タイトルを画像に描画
+        cv2.putText(drawn_img, title, (10, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        
+        drawn_images.append(drawn_img)
+    
+    # 画像サイズを統一
+    if drawn_images:
+        target_height = max(img.shape[0] for img in drawn_images)
+        target_width = max(img.shape[1] for img in drawn_images)
+        
+        resized_images = []
+        for img in drawn_images:
+            if img.shape[:2] != (target_height, target_width):
+                resized = cv2.resize(img, (target_width, target_height))
+            else:
+                resized = img
+            resized_images.append(resized)
+        
+        # グリッドを作成
+        grid_rows = []
+        for r in range(rows):
+            row_images = []
+            for c in range(cols):
+                idx = r * cols + c
+                if idx < len(resized_images):
+                    row_images.append(resized_images[idx])
+                else:
+                    # 空の画像で埋める
+                    empty = np.zeros((target_height, target_width, 3), dtype=np.uint8)
+                    row_images.append(empty)
+            
+            grid_rows.append(np.hstack(row_images))
+        
+        return np.vstack(grid_rows)
+    
+    return np.array([])
+
+
+def save_keypoints_comparison(images: list,
+                             feature_sets: list,
+                             output_path: Union[str, Path],
+                             titles: list = None,
+                             cols: int = 2):
+    """
+    特徴点比較画像を保存
+    
+    Args:
+        images: 画像のリスト
+        feature_sets: 特徴点セットのリスト
+        output_path: 出力ファイルのパス
+        titles: タイトルのリスト
+        cols: 列数
+    """
+    grid_image = draw_keypoints_grid(images, feature_sets, titles, cols)
+    if grid_image.size > 0:
+        cv2.imwrite(str(output_path), grid_image)
+        return True
+    return False
 
 
 def filter_keypoints_by_response(feature_set: FeatureSet,
