@@ -104,8 +104,8 @@ class DISKExtractor(LearnedFeatureExtractor):
                  model_path: Optional[Union[str, Path]] = None,
                  desc_dim: int = 128,
                  max_keypoints: int = 2048,
-                 keypoint_threshold: float = 0.0,
-                 nms_radius: int = 2,
+                 keypoint_threshold: float = 0.005,
+                 nms_radius: int = 4,
                  device: Optional[str] = None,
                  **kwargs):
         """
@@ -188,7 +188,9 @@ class DISKExtractor(LearnedFeatureExtractor):
         except Exception as e:
             print(f"Warning: Failed to load DISK model: {e}")
             print("Using dummy implementation for demonstration")
+            print(f"Model path attempted: {model_path}")
             self.model = self._create_dummy_model()
+            self.model.to(self.device)
             self.is_loaded = True
     
     def _create_dummy_model(self) -> nn.Module:
@@ -201,8 +203,17 @@ class DISKExtractor(LearnedFeatureExtractor):
             def forward(self, x):
                 b, c, h, w = x.shape
                 
-                # Generate random keypoint map
-                keypoint_map = torch.rand(b, 1, h//8, w//8) * 0.5
+                # Create more realistic keypoint map based on gradients
+                x_gray = x if x.shape[1] == 1 else x.mean(dim=1, keepdim=True)
+                
+                # Simple edge detection for keypoint simulation
+                sobel_x = F.conv2d(x_gray, torch.tensor([[[[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]]]]).float().to(x.device), padding=1)
+                sobel_y = F.conv2d(x_gray, torch.tensor([[[[-1, -2, -1], [0, 0, 0], [1, 2, 1]]]]).float().to(x.device), padding=1)
+                gradient_mag = torch.sqrt(sobel_x**2 + sobel_y**2)
+                
+                # Downsample to feature map size
+                keypoint_map = F.avg_pool2d(gradient_mag, kernel_size=8, stride=8)
+                keypoint_map = torch.sigmoid(keypoint_map / keypoint_map.max().clamp(min=1e-6))
                 
                 # Generate random descriptor map
                 descriptor_map = torch.randn(b, self.desc_dim, h//8, w//8)
@@ -257,7 +268,7 @@ class DISKExtractor(LearnedFeatureExtractor):
         )
         
         coords = torch.stack([x_coords.flatten(), y_coords.flatten()], dim=0)
-        coords = coords.float() * 8  # Scale back to original image
+        coords = (coords.float() + 0.5) * 8  # Scale back to original image with center offset
         
         # Threshold
         valid_mask = keypoint_scores[0] > self.keypoint_threshold
@@ -297,28 +308,25 @@ class DISKExtractor(LearnedFeatureExtractor):
         if len(coords) == 0:
             return []
         
-        # Sort by score
+        # Sort by score (descending)
         _, indices = torch.sort(scores, descending=True)
         
         keep = []
-        for i in indices:
-            # Check if this point is too close to any kept point
-            if len(keep) == 0:
-                keep.append(i.item())
-                continue
-            
+        for idx in indices:
+            i = idx.item()
             current_coord = coords[i]
-            too_close = False
             
+            # Check if this point is too close to any kept point
+            too_close = False
             for j in keep:
                 kept_coord = coords[j]
-                dist = torch.norm(current_coord - kept_coord)
+                dist = torch.norm(current_coord - kept_coord).item()
                 if dist < radius:
                     too_close = True
                     break
             
             if not too_close:
-                keep.append(i.item())
+                keep.append(i)
         
         return keep
     

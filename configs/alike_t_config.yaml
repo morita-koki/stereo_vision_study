@@ -1,0 +1,78 @@
+# ALIKE-T Feature Extractor Configuration
+# すべてのパラメータが含まれており、使用しない抽出器の設定も記述されています
+
+# 基本設定
+extractor_type: "alike-t"
+input_dir: "data/"
+output_dir: "output/alike_t_features/"
+max_keypoints: 1000
+min_response: null
+filter_region: null
+
+# 可視化設定
+visualization_enabled: true
+show_response: true
+color_by_response: false
+max_display_keypoints: 150
+
+# バッチ処理設定
+file_patterns:
+  - "*.jpg"
+  - "*.jpeg"
+  - "*.png"
+  - "*.bmp"
+  - "*.tiff"
+parallel_processing: false
+
+# 従来手法の設定（使わない場合でも全て記述）
+sift:
+  n_features: 0
+  n_octave_layers: 3
+  contrast_threshold: 0.04
+  edge_threshold: 10
+  sigma: 1.6
+
+orb:
+  n_features: 500
+  scale_factor: 1.2
+  n_levels: 8
+  edge_threshold: 31
+  first_level: 0
+  wta_k: 2
+  patch_size: 31
+  fast_threshold: 20
+
+surf:
+  hessian_threshold: 400
+  n_octaves: 4
+  n_octave_layers: 3
+  extended: false
+  upright: false
+
+brief:
+  descriptor_size: 32
+  use_orientation: false
+
+# 学習ベース手法の設定（使わない場合でも全て記述）
+superpoint:
+  nms_radius: 4
+  keypoint_threshold: 0.005
+  max_keypoints: -1
+  remove_borders: 4
+
+disk:
+  desc_dim: 128
+  max_keypoints: 2048
+  keypoint_threshold: 0.0
+  nms_radius: 2
+
+alike:
+  model_type: "alike-t"
+  desc_dim: 64  # ALIKE-Tは64次元記述子
+  max_keypoints: 1000
+  keypoint_threshold: 0.5
+  nms_radius: 2
+
+dummy_learned:
+  n_features: 100
+  device: "cpu"

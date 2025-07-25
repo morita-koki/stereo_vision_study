@@ -1,4 +1,3 @@
-import json
 import yaml
 from typing import Dict, Any, Optional, Union
 from pathlib import Path
@@ -46,19 +45,76 @@ class BRIEFConfig:
 
 
 @dataclass
+class SuperPointConfig:
+    """SuperPoint特徴量抽出器の設定"""
+    nms_radius: int = 4
+    keypoint_threshold: float = 0.005
+    max_keypoints: int = -1
+    remove_borders: int = 4
+
+
+@dataclass
+class DISKConfig:
+    """DISK特徴量抽出器の設定"""
+    desc_dim: int = 128
+    max_keypoints: int = 2048
+    keypoint_threshold: float = 0.0
+    nms_radius: int = 2
+
+
+@dataclass
+class ALikeConfig:
+    """ALIKE特徴量抽出器の設定"""
+    model_type: str = "alike-t"  # alike-t, alike-s, alike-n, alike-l
+    desc_dim: int = 64  # 64 for alike-t, 128 for alike-s/n, 256 for alike-l
+    max_keypoints: int = 1000
+    keypoint_threshold: float = 0.5
+    nms_radius: int = 2
+
+
+@dataclass
+class DummyLearnedConfig:
+    """Dummy学習ベース特徴量抽出器の設定"""
+    n_features: int = 100
+    device: str = "cpu"
+
+
+@dataclass
 class FeatureExtractorConfig:
     """特徴量抽出器の全体設定"""
+    # 基本設定
     extractor_type: str = "sift"
+    input_dir: str = "data/"
+    output_dir: str = "output/"
     max_keypoints: Optional[int] = None
     min_response: Optional[float] = None
     filter_region: Optional[tuple] = None
+    
+    # 可視化設定
+    visualization_enabled: bool = True
+    show_response: bool = False
+    color_by_response: bool = False
+    max_display_keypoints: int = 100
+    
+    # バッチ処理設定
+    file_patterns: list = None
+    parallel_processing: bool = False
+    
+    # 従来手法の設定（使わなくても全て含める）
     sift: SIFTConfig = None
     orb: ORBConfig = None
     surf: SURFConfig = None
     brief: BRIEFConfig = None
     
+    # 学習ベース手法の設定（使わなくても全て含める）
+    superpoint: SuperPointConfig = None
+    disk: DISKConfig = None
+    alike: ALikeConfig = None
+    dummy_learned: DummyLearnedConfig = None
+    
     def __post_init__(self):
         """初期化後の処理"""
+        # 従来手法の設定初期化
         if self.sift is None:
             self.sift = SIFTConfig()
         if self.orb is None:
@@ -67,6 +123,20 @@ class FeatureExtractorConfig:
             self.surf = SURFConfig()
         if self.brief is None:
             self.brief = BRIEFConfig()
+        
+        # 学習ベース手法の設定初期化
+        if self.superpoint is None:
+            self.superpoint = SuperPointConfig()
+        if self.disk is None:
+            self.disk = DISKConfig()
+        if self.alike is None:
+            self.alike = ALikeConfig()
+        if self.dummy_learned is None:
+            self.dummy_learned = DummyLearnedConfig()
+        
+        # file_patternsのデフォルト値
+        if self.file_patterns is None:
+            self.file_patterns = ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.tiff"]
 
 
 class ConfigManager:
@@ -84,46 +154,56 @@ class ConfigManager:
         """
         # 基本設定
         self.config.extractor_type = config_dict.get('extractor_type', 'sift')
+        self.config.input_dir = config_dict.get('input_dir', 'data/')
+        self.config.output_dir = config_dict.get('output_dir', 'output/')
         self.config.max_keypoints = config_dict.get('max_keypoints')
         self.config.min_response = config_dict.get('min_response')
         self.config.filter_region = config_dict.get('filter_region')
         
-        # SIFT設定
+        # 可視化設定
+        self.config.visualization_enabled = config_dict.get('visualization_enabled', True)
+        self.config.show_response = config_dict.get('show_response', False)
+        self.config.color_by_response = config_dict.get('color_by_response', False)
+        self.config.max_display_keypoints = config_dict.get('max_display_keypoints', 100)
+        
+        # バッチ処理設定
+        self.config.file_patterns = config_dict.get('file_patterns')
+        self.config.parallel_processing = config_dict.get('parallel_processing', False)
+        
+        # 従来手法の設定
         if 'sift' in config_dict:
             sift_config = config_dict['sift']
             self.config.sift = SIFTConfig(**sift_config)
         
-        # ORB設定
         if 'orb' in config_dict:
             orb_config = config_dict['orb']
             self.config.orb = ORBConfig(**orb_config)
         
-        # SURF設定
         if 'surf' in config_dict:
             surf_config = config_dict['surf']
             self.config.surf = SURFConfig(**surf_config)
         
-        # BRIEF設定
         if 'brief' in config_dict:
             brief_config = config_dict['brief']
             self.config.brief = BRIEFConfig(**brief_config)
+        
+        # 学習ベース手法の設定
+        if 'superpoint' in config_dict:
+            superpoint_config = config_dict['superpoint']
+            self.config.superpoint = SuperPointConfig(**superpoint_config)
+        
+        if 'disk' in config_dict:
+            disk_config = config_dict['disk']
+            self.config.disk = DISKConfig(**disk_config)
+        
+        if 'alike' in config_dict:
+            alike_config = config_dict['alike']
+            self.config.alike = ALikeConfig(**alike_config)
+        
+        if 'dummy_learned' in config_dict:
+            dummy_learned_config = config_dict['dummy_learned']
+            self.config.dummy_learned = DummyLearnedConfig(**dummy_learned_config)
     
-    def load_from_json(self, json_path: Union[str, Path]):
-        """
-        JSONファイルから設定を読み込み
-        
-        Args:
-            json_path: JSONファイルのパス
-        """
-        json_path = Path(json_path)
-        
-        if not json_path.exists():
-            raise FileNotFoundError(f"Config file not found: {json_path}")
-        
-        with open(json_path, 'r', encoding='utf-8') as f:
-            config_dict = json.load(f)
-        
-        self.load_from_dict(config_dict)
     
     def load_from_yaml(self, yaml_path: Union[str, Path]):
         """
@@ -142,20 +222,6 @@ class ConfigManager:
         
         self.load_from_dict(config_dict)
     
-    def save_to_json(self, json_path: Union[str, Path]):
-        """
-        JSONファイルに設定を保存
-        
-        Args:
-            json_path: JSONファイルのパス
-        """
-        json_path = Path(json_path)
-        json_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        config_dict = asdict(self.config)
-        
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(config_dict, f, indent=2, ensure_ascii=False)
     
     def save_to_yaml(self, yaml_path: Union[str, Path]):
         """
@@ -193,6 +259,23 @@ class ConfigManager:
             return asdict(self.config.surf)
         elif extractor_type == 'brief':
             return asdict(self.config.brief)
+        elif extractor_type == 'superpoint':
+            return asdict(self.config.superpoint)
+        elif extractor_type == 'disk':
+            return asdict(self.config.disk)
+        elif extractor_type in ['alike-t', 'alike-s', 'alike-n', 'alike-l']:
+            config = asdict(self.config.alike)
+            config['model_type'] = extractor_type
+            # ALikeの各モデルに応じたdesc_dimを設定
+            if extractor_type == 'alike-t':
+                config['desc_dim'] = 64
+            elif extractor_type in ['alike-s', 'alike-n']:
+                config['desc_dim'] = 128
+            elif extractor_type == 'alike-l':
+                config['desc_dim'] = 256
+            return config
+        elif extractor_type == 'dummy_learned':
+            return asdict(self.config.dummy_learned)
         else:
             raise ValueError(f"Unknown extractor type: {extractor_type}")
     
@@ -220,6 +303,22 @@ class ConfigManager:
             for key, value in kwargs.items():
                 if hasattr(self.config.brief, key):
                     setattr(self.config.brief, key, value)
+        elif extractor_type == 'superpoint':
+            for key, value in kwargs.items():
+                if hasattr(self.config.superpoint, key):
+                    setattr(self.config.superpoint, key, value)
+        elif extractor_type == 'disk':
+            for key, value in kwargs.items():
+                if hasattr(self.config.disk, key):
+                    setattr(self.config.disk, key, value)
+        elif extractor_type in ['alike-t', 'alike-s', 'alike-n', 'alike-l']:
+            for key, value in kwargs.items():
+                if hasattr(self.config.alike, key):
+                    setattr(self.config.alike, key, value)
+        elif extractor_type == 'dummy_learned':
+            for key, value in kwargs.items():
+                if hasattr(self.config.dummy_learned, key):
+                    setattr(self.config.dummy_learned, key, value)
         else:
             raise ValueError(f"Unknown extractor type: {extractor_type}")
     
@@ -234,7 +333,7 @@ class ConfigManager:
     
     def __str__(self) -> str:
         """文字列表現"""
-        return json.dumps(self.to_dict(), indent=2, ensure_ascii=False)
+        return yaml.dump(self.to_dict(), default_flow_style=False, allow_unicode=True)
 
 
 def create_default_config() -> FeatureExtractorConfig:
@@ -260,11 +359,9 @@ def load_config(config_path: Union[str, Path]) -> FeatureExtractorConfig:
     config_path = Path(config_path)
     manager = ConfigManager()
     
-    if config_path.suffix.lower() == '.json':
-        manager.load_from_json(config_path)
-    elif config_path.suffix.lower() in ['.yaml', '.yml']:
+    if config_path.suffix.lower() in ['.yaml', '.yml']:
         manager.load_from_yaml(config_path)
     else:
-        raise ValueError(f"Unsupported config file format: {config_path.suffix}")
+        raise ValueError(f"Unsupported config file format: {config_path.suffix}. Only YAML files are supported.")
     
     return manager.config
